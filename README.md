@@ -17,24 +17,28 @@ docker-compose exec overdrive overdrive download YOUR_BOOK.odm
 
 ## Backing up Audible Audiobooks
 
-**TBD**
 So, downloading audible is easy enough. Just on PC go in and grab the download files. The problem is that Audible downloads a DRMed `AAX` file. To decrypt back to `MP3`, we need to find our `AUTHCODE`. I've found two approaches for getting it, but it should only need to be ran once per user regardless. Then it'll just be decrypting.
 
-```bash
-# Grab the checksum
-ffprobe /Audiobooks/Some_File.aax
-# look for "[aax] file checksum ==" near the top of the output
+### Get AUTHCODE
 
-# Look up the checksum
-export CHECKSUM=YOUR_CHECKSUM
-cd /usr/app/inaudible-tables
-./rcrack . -h $CHECKSUM | grep "hex:"
-# The information after hex is what you want.
+We need to get your AUTHCODE off of one of your audible books. This is unique per account. After placing one of your `.AAX` files into `./audible/audiobooks`, run the following:
+
+```bash
+docker-compose exec audible find_auth_code SOME_FILE.aax
 ```
 
+Now update the `.env` in the same folder as `docker-compose.yaml` to look like the following, replacing YOUR_HEX with what you just found.
+
+```plain
+AUTHCODE=YOUR_HEX
+```
+
+Then restart the compose with `docker-compose up -d`.
+
+### Decrypt AAX
+
 ```bash
-export AUTHCODE=YOUR_CODE
-docker-compose exec audible AAXtoMP3 --aac --chaptered --authcode $AUTHCODE /Audiobooks/SOME_FILE.aax
+docker-compose exec audible convert_aax SOME_FILE.aax
 ```
 
 ## Problems
