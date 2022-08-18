@@ -1,0 +1,12 @@
+#! /bin/bash
+if [ -z "$AUTHCODE" ]
+then
+    echo "AUTHCODE is not set. Please find it with 'find_auth_code $1' and set it."
+else
+    if [ -f $1 ]
+    then
+        AAXtoMP3 --aac --chaptered --authcode $AUTHCODE $1
+    else
+        echo "$1 not found, please provide actual file in ${pwd}"
+    fi
+fi

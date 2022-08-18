@@ -1,0 +1,9 @@
+#! /bin/bash
+
+CHECKSUM=$(ffprobe -i $1 2>&1 | grep "checksum" | awk -F " == " '{print $2}')
+echo "Checksum is $CHECKSUM"
+# Look up the checksum
+cd /usr/app/inaudible-tables
+AUTHCODE=$(./rcrack . -h $CHECKSUM | grep "hex:"  | awk -F ":" '{print $2}')
+echo "AuthCode is $AUTHCODE"
+cd - > /dev/null
