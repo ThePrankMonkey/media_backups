@@ -22,13 +22,18 @@ So, downloading audible is easy enough. Just on PC go in and grab the download f
 
 ```bash
 # Grab the checksum
-ffprobe /Audiobooks/Some_File.aax | grep "[aax] file checksum =="
+ffprobe /Audiobooks/Some_File.aax
+# look for "[aax] file checksum ==" near the top of the output
+
 # Look up the checksum
+export CHECKSUM=YOUR_CHECKSUM
 cd /usr/app/inaudible-tables
 ./rcrack . -h $CHECKSUM | grep "hex:"
+# The information after hex is what you want.
 ```
 
 ```bash
+export AUTHCODE=YOUR_CODE
 docker-compose exec audible AAXtoMP3 --aac --chaptered --authcode $AUTHCODE /Audiobooks/SOME_FILE.aax
 ```
 
