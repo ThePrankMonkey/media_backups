@@ -2,4 +2,10 @@ services:
   overdrive:
     build: ./overdrive
     volumes:
-    - ./overdrive/audiobooks:/Audiobooks
+      - ./overdrive/audiobooks:/Audiobooks
+  audible:
+    build: ./audible
+    volumes:
+      - ./audible/audiobooks:/Audiobooks
+    environment:
+      - AUTHCODE=${AUTHCODE}

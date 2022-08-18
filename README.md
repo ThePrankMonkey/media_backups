@@ -18,7 +18,35 @@ docker-compose exec overdrive overdrive download YOUR_BOOK.odm
 ## Backing up Audible Audiobooks
 
 **TBD**
+So, downloading audible is easy enough. Just on PC go in and grab the download files. The problem is that Audible downloads a DRMed `AAX` file. To decrypt back to `MP3`, we need to find our `AUTHCODE`. I've found two approaches for getting it, but it should only need to be ran once per user regardless. Then it'll just be decrypting.
+
+```bash
+# Grab the checksum
+ffprobe /Audiobooks/Some_File.aax | grep "[aax] file checksum =="
+# Look up the checksum
+cd /usr/app/inaudible-tables
+./rcrack . -h $CHECKSUM | grep "hex:"
+```
+
+```bash
+docker-compose exec audible AAXtoMP3 --aac --chaptered --authcode $AUTHCODE /Audiobooks/SOME_FILE.aax
+```
+
+## Problems
+
+### Problem - mp4v2-utils not in newest Ubuntu
+
+Gotta install from an older version.
+
+- https://packages.ubuntu.com/bionic/amd64/libmp4v2-2/download
+- https://packages.ubuntu.com/bionic/amd64/mp4v2-utils/download
 
 ## Resources
 
 - https://github.com/chbrown/overdrive
+- https://github.com/KrumpetPirate/AAXtoMP3
+- https://blog.dtpnk.tech/en/howto/convert_audible_to_mp3/#
+- [inAudible-NG's audible-activator](https://github.com/inAudible-NG/audible-activator) looks to pull your audible `AUTHCODE` from the browser.
+- [inAudible-NG's tables](https://github.com/inAudible-NG/tables) looks to use a rainbow table to hack your `AUTHCODE` due to collision.
+- https://github.com/mkb79/audible-cli
+- https://github.com/openaudible/openaudible, junk ignore this.

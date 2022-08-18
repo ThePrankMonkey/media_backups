@@ -1,2 +1,9 @@
 overdrive/audiobooks/*
 !overdrive/audiobooks/.gitkeep
+
+audible/audiobooks/*
+!audible/audiobooks/.gitkeep
+
+.env
+.envrc
+.direnv
