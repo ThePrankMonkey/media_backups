@@ -3,6 +3,10 @@ services:
     build: ./overdrive
     volumes:
       - ./overdrive/audiobooks:/Audiobooks
+      - ./overdrive/ebooks:/Ebooks
+      - ./overdrive/scripts:/Scripts
+    environment:
+      - SLEEP_IN_SECONDS=300 # How often to scan for ODMs, use Integer, defaults to 300
   audible:
     build: ./audible
     volumes:
