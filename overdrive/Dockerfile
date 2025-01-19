@@ -15,8 +15,14 @@ RUN apt-get install -y curl wget uuid-runtime libxml2-utils libc-bin openssl cor
 # Get binaries from github
 RUN curl https://chbrown.github.io/overdrive/overdrive.sh -o /bin/overdrive \
     && chmod +x /usr/bin/overdrive
-RUN wget https://github.com/BentonEdmondson/knock/releases/download/1.2.0/knock-1.2.0-x86_64-linux -O /usr/bin/knock \
-    && chmod +x /usr/bin/knock
+# Just incase we lose overdrive.sh as well, this will work
+# COPY ./archived_tools/overdrive.sh /usr/bin/overdrive
+# RUN chmod +x /usr/bin/overdrive
+# Repo has been removed, using backed up instance
+# RUN wget https://github.com/BentonEdmondson/knock/releases/download/1.2.0/knock-1.2.0-x86_64-linux -O /usr/bin/knock \
+#     && chmod +x /usr/bin/knock
+COPY ./archived_tools/knock-1.2.0-x86_64-linux /usr/bin/knock
+RUN chmod +x /usr/bin/knock
 
 # Add scripts
 COPY ./scripts /Scripts
