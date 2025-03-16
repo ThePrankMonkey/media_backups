@@ -1,0 +1,309 @@
+#! /usr/bin/python3
+
+"""
+Constantly monitors a folder to process Overdrive work
+"""
+
+import argparse
+import datetime
+import humanfriendly
+import logging
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+logging.basicConfig(level=logging.INFO)
+if os.environ.get("VERBOSE", 0):
+    logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+
+BINARY_FFMPEG = "ffmpeg"
+PATH_INPUT = "/files/input"
+PATH_OUTPUT = "/files/output"
+PATH_PROCESSED = "/files/processed"
+PATH_ERRORS = "/files/errors"
+SLEEP_IN_SECONDS = int(os.environ.get("SLEEP_IN_SECONDS", 60))
+INPUT_FORMATS = [
+    ".avi",
+    ".flv",
+    ".mkv",
+    ".mp4",
+    ".rmvb",
+]
+OUTPUT_FORMAT = "mp4"
+ACTION_LOOP = "loop"
+ACTION_ONCE = "once"
+
+
+def get_duration_of_job(filepath):
+    logger.debug(f"Looking up duration of {filepath}")
+    command = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        filepath,
+    ]
+    result = subprocess.run(command, capture_output=True, text=True)
+    logger.debug(f"STDOUT: {result.stdout}")
+    logger.debug(f"STDERR: {result.stderr}")
+    if result.returncode != 0:
+        raise Exception(f"Unable to find duration of {filepath}")
+    else:
+        duration = float(result.stdout)
+        logger.debug(f"Duration is {duration} seconds.")
+        return duration
+
+
+class Record:
+    def __init__(
+        self,
+        filepath,
+        status,
+        reduction=0,
+        process_time=0,
+    ):
+        self.filepath = filepath
+        self.status = status
+        self.reduction = reduction
+        self.process_time = process_time
+        self.duration = get_duration_of_job(self.filepath)
+
+    def __repr__(self):
+        return f"Status: {str(self.status):5} for File: {self.filepath}, {self.duration=}, {self.process_time=}, {self.reduction=}"
+
+
+class Processor:
+    def __init__(
+        self,
+        input_folder,
+        output_folder,
+        processed_folder,
+        error_folder,
+    ):
+        self.input_folder = input_folder
+        self.output_folder = output_folder
+        self.processed_folder = processed_folder
+        self.error_folder = error_folder
+        self.records = []
+        self.validate()
+
+    def validate(self):
+        # check paths
+        paths = [
+            self.input_folder,
+            self.output_folder,
+            self.processed_folder,
+            self.error_folder,
+        ]
+        for path in paths:
+            if not os.path.exists(path):
+                sys.exit(f"Expected path [{path}] is missing.")
+        logger.debug("All expected paths exist.")
+        # check binaries
+        binaries = [
+            BINARY_FFMPEG,
+        ]
+        for binary in binaries:
+            if not shutil.which(binary):
+                sys.exit(f"Expected binary [{binary}] is not part of PATH.")
+        logger.debug("All expected binaries exist.")
+
+    def report(self):
+        successes = [r for r in self.records if r.status]
+        failures = [r for r in self.records if not r.status]
+        logger.info(f"The following {len(successes)} files were successful")
+        for success in successes:
+            logger.info(success)
+        logger.info(f"The following {len(failures)} files were failures")
+        for failure in failures:
+            logger.error(failure)
+        total_duration = sum(r.duration for r in self.records)
+        total_process_time = sum(r.process_time for r in self.records)
+        logger.info(
+            f"Total video duration:  {humanfriendly.format_timespan(total_duration)}"
+        )
+        logger.info(
+            f"Total processing Time: {humanfriendly.format_timespan(total_process_time)}"
+        )
+
+    def get_total_duration_of_jobs(self):
+        total_duration = 0
+        for filepath in self.fullpaths:
+            cur_duration = get_duration_of_job(filepath)
+            total_duration += cur_duration
+        logger.debug(f"Total duration is {total_duration} seconds")
+        return total_duration
+
+    def get_input_files(self):
+        logger.info(f"checking input folder for files, {self.input_folder}")
+        files = os.listdir(self.input_folder)
+        logger.info(f"Found {len(files)} files")
+        full_files = [os.path.join(self.input_folder, file) for file in files]
+        full_files.sort()
+        files_to_process = [
+            file for file in full_files if os.path.splitext(file)[1] in INPUT_FORMATS
+        ]
+        files_to_skip = [
+            file
+            for file in full_files
+            if os.path.splitext(file)[1] not in INPUT_FORMATS
+        ]
+        logger.info(f"Will process {len(files_to_process)} files.")
+        logger.info(f"Will skip {len(files_to_skip)} files:\n{files_to_skip}")
+        return files_to_process
+
+    def get_moved_path(self, fullpath, new_folder):
+        moved_path = fullpath.replace(self.input_folder, new_folder)
+        logger.debug(f"Changed <{fullpath}> to <{moved_path}>")
+        return moved_path
+
+    def get_new_path(self, fullpath):
+        new_path = f"{os.path.splitext(fullpath)[0]} [x265].{OUTPUT_FORMAT}"
+        new_path = new_path.replace(self.input_folder, self.output_folder)
+        logger.debug(f"Changed <{fullpath}> to <{new_path}>")
+        return new_path
+
+    def reencode_file(self, fullpath, new_path):
+        command = [
+            BINARY_FFMPEG,
+            "-i",
+            fullpath,
+            "-c:v",
+            "libx265",
+            "-c:a",
+            "aac",
+            "-x265-params",
+            "crf=25",
+            new_path,
+        ]
+        result = subprocess.run(command, capture_output=True, text=True)
+        return result
+
+    def approximate_size(self, size, flag_1024_or_1000=True):
+        # https://stackoverflow.com/a/59634071
+        pass
+
+    def process_input(self):
+        self.fullpaths = self.get_input_files()
+        # Get Durations
+        total_duration = self.get_total_duration_of_jobs()
+        total_duration_hr = humanfriendly.format_timespan(total_duration)
+        logger.info(
+            f"Duration of all {len(self.fullpaths)} jobs is {total_duration_hr}"
+        )
+        # Process
+        for count, fullpath in enumerate(self.fullpaths, 1):
+            logger.info(
+                f"{count:4} of {len(self.fullpaths)}: Attempting to reencode {fullpath}"
+            )
+            time_begin = time.time()
+            new_path = self.get_new_path(fullpath)
+            result = self.reencode_file(fullpath=fullpath, new_path=new_path)
+            time_end = time.time()
+            if result.returncode == 0:
+                logger.info(f"Successfully encoded {fullpath}")
+                pre_size = os.stat(fullpath).st_size
+                pre_size_hr = humanfriendly.format_size(pre_size)
+                post_size = os.stat(new_path).st_size
+                post_size_hr = humanfriendly.format_size(post_size)
+                reduction = (1 - post_size / pre_size) * 100
+                total_time = humanfriendly.format_timespan(time_end - time_begin)
+                logger.info(
+                    f"Reduced size from {pre_size_hr} to {post_size_hr}. A reduction of {reduction:.2f}% in {total_time}."
+                )
+                process_path = self.get_moved_path(fullpath, self.processed_folder)
+                logger.info(f"Moving {fullpath} to processed folder.")
+                os.rename(fullpath, process_path)
+                self.records.append(
+                    Record(
+                        status=True,
+                        filepath=process_path,
+                        process_time=time_end - time_begin,
+                        reduction=reduction,
+                    )
+                )
+            else:
+                logger.error(f"Was not able to convert {fullpath}")
+                error_path = self.get_moved_path(fullpath, self.error_folder)
+                os.rename(fullpath, error_path)
+                self.records.append(
+                    Record(
+                        status=False,
+                        filepath=error_path,
+                    )
+                )
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Split video into segments.")
+    parser.add_argument(
+        "-a",
+        "--action",
+        help="The folder to scan for video files.",
+        choices=[ACTION_LOOP, ACTION_ONCE],
+        default=ACTION_LOOP,
+    )
+    parser.add_argument(
+        "-i",
+        "--input_folder",
+        help="The folder to scan for video files.",
+        default=PATH_INPUT,
+    )
+    parser.add_argument(
+        "-o",
+        "--output_folder",
+        help="The folder to place converted files into.",
+        default=PATH_OUTPUT,
+    )
+    parser.add_argument(
+        "-p",
+        "--processed_folder",
+        help="The folder to move source files to if successfully converted.",
+        default=PATH_PROCESSED,
+    )
+    parser.add_argument(
+        "-e",
+        "--error_folder",
+        help="The folder to move source files to if conversion fails.",
+        default=PATH_ERRORS,
+    )
+    args = parser.parse_args()
+    input_folder = args.input_folder
+    output_folder = args.output_folder
+    processed_folder = args.processed_folder
+    error_folder = args.error_folder
+    action = args.action
+    # Run through
+    logger.info(f"Starting to monitor for files")
+    if action == ACTION_LOOP:
+        while True:
+            processor = Processor(
+                input_folder=input_folder,
+                output_folder=output_folder,
+                processed_folder=processed_folder,
+                error_folder=error_folder,
+            )
+            processor.process_input()
+            processor.report()
+            logger.info(f"Waiting {SLEEP_IN_SECONDS} seconds before next run")
+            time.sleep(SLEEP_IN_SECONDS)
+    if action == ACTION_ONCE:
+        processor = Processor(
+            input_folder=input_folder,
+            output_folder=output_folder,
+            processed_folder=processed_folder,
+            error_folder=error_folder,
+        )
+        processor.process_input()
+        processor.report()
+
+
+if __name__ == "__main__":
+    main()
